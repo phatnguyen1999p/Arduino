@@ -5,8 +5,8 @@
 #include <Adafruit_MLX90614.h>
 #include <RtcDS1307.h>
 
-#define REPORTING_PERIOD_MINUTE 1
-#define Buzzer 2
+//#define REPORTING_PERIOD_MINUTE 1
+#define Buzzer 3
 #define countof(a) (sizeof(a)/ sizeof(a[0]))
 
 PulseOximeter pox;
@@ -27,12 +27,14 @@ void printData(float, float, float,float);
 void GY906_Initializing();
 void makeSound(byte code, byte times);
 void printDateTime(const RtcDateTime& dt);
-//void DELAY(int TIME);
+void getData();
 
 void onBeatDetected(){
     makeSound(2,1);
     LCD.setCursor(10,0);
     LCD.write(0);
+    LCD.setCursor(10,0);
+    LCD.print("");
 }
 void MAX30100_PulseOximeter_Initializing(){
   LCD.clear();
@@ -51,6 +53,7 @@ void MAX30100_PulseOximeter_Initializing(){
     makeSound(1,2);
   }
   pox.setOnBeatDetectedCallback(onBeatDetected);
+  pox.shutdown();
 }
 void GY906_Initializing(){
   LCD.clear();
@@ -85,7 +88,6 @@ void RTC_Initializing(){
       RTC.SetDateTime(complied);
     }
   }
-
   RtcDateTime now = RTC.GetDateTime();
   if (!RTC.GetIsRunning()){
     Serial.println("RTC was not actively running");
@@ -98,10 +100,12 @@ void RTC_Initializing(){
   }
   else if (now == complied){
   }
+  RTC.SetSquareWavePin(DS1307SquareWaveOut_Low);
+  //RtcDateTime
   now = RTC.GetDateTime();
   lastDay = now.Day();
   lastSecond = now.Second();
-  RTC.SetSquareWavePin(DS1307SquareWaveOut_Low);
+  
 
   snprintf_P(datestring,
   countof(datestring), 
@@ -156,10 +160,6 @@ void printDateTime(const RtcDateTime& dt){
 }
 void setup() {
   Wire.setClock(I2C_BUS_SPEED);
-  /*digitalWrite( SDA, HIGH);
-  digitalWrite( SCL, HIGH);
-  digitalWrite( SDA, LOW);
-  digitalWrite( SCL, LOW);*/
   
   LCD.init();
   LCD.backlight();
@@ -169,6 +169,7 @@ void setup() {
   LCD.createChar(0,heart);
   
   pinMode(Buzzer, OUTPUT);
+  pinMode(2, INPUT_PULLUP);
   makeSound(2, 3);
 
   RTC_Initializing();
@@ -177,7 +178,7 @@ void setup() {
   
   Serial.begin(9600);
   LCD.clear();
-  
+  attachInterrupt(digitalPinToInterrupt(2),getData,RISING);
   // put your setup code here, to run once:
 }
 
@@ -212,28 +213,42 @@ void makeSound(byte code, byte times){
   tone(Buzzer,82,125);*/
 }
 void loop() {
-  pox.update();
   RtcDateTime now = RTC.GetDateTime();
-  if (now.Minute() - timeLastReport >= REPORTING_PERIOD_MINUTE){
-    
-    float heartRate = pox.getHeartRate();
-    float SpO2 = pox.getSpO2();
-    double OTemp = GY906.readObjectTempC();
-    double ATemp = GY906.readAmbientTempC();
-  
-    printData(heartRate,SpO2,ATemp,OTemp);
-    
-    timeLastReport = now.Minute();
-    if (timeLastReport == 59){
-      timeLastReport = -1;
-    }
-    pox.shutdown();
-    makeSound(2,3);    
-    delay(3000);
-    pox.resume();
-  }
-  else if (now.Second() != lastSecond){
+  if (now.Second() != lastSecond){
     printDateTime(now);
     lastSecond = now.Second();
   }
+}
+void getData(){
+  int t;
+  makeSound(2,3);
+  sei();
+
+  LCD.clear();
+  LCD.setCursor(0,0);
+  LCD.print("Dang do!!!");
+
+  pox.resume();
+
+  RtcDateTime now = RTC.GetDateTime();
+  if (now.Second() + 10 >= 60){
+    t = -(now.Second()%60);
+  } else
+  {
+    t = now.Second();
+  }
+  
+  while (RTC.GetDateTime().Second() - t <= 10)
+  {
+    pox.update();
+  }
+  
+  float heartRate = pox.getHeartRate();
+  float SpO2 = pox.getSpO2();
+  double OTemp = GY906.readObjectTempC();
+  double ATemp = GY906.readAmbientTempC();
+
+  pox.shutdown();
+  printData(heartRate,SpO2,ATemp,OTemp);
+  delay(1000);
 }
